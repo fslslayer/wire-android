@@ -234,4 +234,29 @@ package object utils {
         s"[[$bold]] $normal"
       } mkString " "
   }
+
+  def format(className: String, oneLiner: Boolean, fields: (String, Option[Any])*): String = {
+    val fieldsIt = fields.collect { case (key, Some(value)) => key -> value.toString }.toList.iterator
+
+    val sb = StringBuilder.newBuilder
+    lazy val fieldMargin = Array.fill(className.length)(" ").mkString("")
+
+    if (!oneLiner) sb.append("\n")
+    sb.append(className).append("(")
+
+    while(fieldsIt.hasNext) {
+      val (key, value) = fieldsIt.next()
+      sb.append(key).append(": ").append(value)
+      if (fieldsIt.hasNext) {
+        if (oneLiner) sb.append(", ")
+        else sb.append("\n").append(fieldMargin).append(" ")
+      }
+    }
+
+    if (!oneLiner) sb.append(fieldMargin)
+    sb.append(")")
+    if (!oneLiner) sb.append("\n")
+
+    sb.toString()
+  }
 }

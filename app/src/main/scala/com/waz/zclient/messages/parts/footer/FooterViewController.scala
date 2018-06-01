@@ -23,7 +23,7 @@ import com.waz.api.Message
 import com.waz.api.Message.Status
 import com.waz.model.MessageData
 import com.waz.service.ZMessaging
-import com.waz.service.messages.MessageAndLikes
+import com.waz.service.messages.{MessageAndLikes, MessagesService}
 import com.waz.threading.CancellableFuture
 import com.waz.utils._
 import com.waz.utils.events.{ClockSignal, EventContext, Signal}
@@ -44,12 +44,14 @@ import scala.concurrent.duration._
 class FooterViewController(implicit inj: Injector, context: Context, ec: EventContext) extends Injectable {
   import com.waz.threading.Threading.Implicits.Ui
 
-  val zms                    = inject[Signal[ZMessaging]]
   val accents                = inject[AccentColorController]
   val selection              = inject[ConversationController].messages
   val signals                = inject[UsersController]
   val likesController        = inject[LikesController]
+
   val conversationController = inject[ConversationController]
+
+  private lazy val zms = inject[Signal[ZMessaging]]
 
   val opts            = Signal[MsgBindOptions]()
   val messageAndLikes = Signal[MessageAndLikes]()
@@ -57,8 +59,9 @@ class FooterViewController(implicit inj: Injector, context: Context, ec: EventCo
 
   val message =
     for {
+      z   <- zms
       id  <- messageAndLikes.map(_.message.id)
-      msg <- zms.flatMap(_.messagesStorage.signal(id))
+      msg <- z.messagesStorage.signal(id)
     } yield msg
 
   val isLiked     = messageAndLikes.map(_.likes.nonEmpty)
@@ -120,9 +123,12 @@ class FooterViewController(implicit inj: Injector, context: Context, ec: EventCo
   }
 
   val linkCallback = new Runnable() {
-    def run() = for (z <- zms.head; m <- message.head) {
+    def run() = for {
+      msgs <- inject[Signal[MessagesService]].head
+      m    <- message.head
+    } yield {
       if (m.state == Message.Status.FAILED || m.state == Message.Status.FAILED_READ) {
-        z.messages.retryMessageSending(m.convId, m.id)
+        msgs.retryMessageSending(m.convId, m.id)
       }
     }
   }

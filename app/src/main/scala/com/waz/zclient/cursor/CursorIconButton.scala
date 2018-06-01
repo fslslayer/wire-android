@@ -41,7 +41,7 @@ import android.support.v4.content.res.ResourcesCompat
 import android.util.AttributeSet
 import android.view.{HapticFeedbackConstants, MotionEvent, View}
 import com.waz.ZLog.ImplicitTag._
-import com.waz.api.AccentColor
+import com.waz.api.impl.AccentColor
 import com.waz.threading.Threading
 import com.waz.utils.events.Signal
 import com.waz.zclient.{R, ViewHelper}

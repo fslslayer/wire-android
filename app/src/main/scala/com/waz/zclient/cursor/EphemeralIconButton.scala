@@ -21,7 +21,7 @@ import android.content.Context
 import android.graphics.drawable.Drawable
 import android.util.{AttributeSet, TypedValue}
 import android.view.Gravity
-import com.waz.api.AccentColor
+import com.waz.api.impl.AccentColor
 import com.waz.model.{ConvExpiry, MessageExpiry}
 import com.waz.utils.events.Signal
 import com.waz.zclient.cursor.CursorController.KeyboardState

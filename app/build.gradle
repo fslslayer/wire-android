@@ -244,9 +244,6 @@ dependencies {
     implementation deps.rebound
     implementation deps.preferences
     implementation deps.commonmark
-    implementation(deps.supportpreferences) {
-        exclude group: 'com.android.support', module: 'appcompat-v7'
-    }
     implementation deps.gridlayout
     //noinspection GradleDynamicVersion
     implementation deps.psBase

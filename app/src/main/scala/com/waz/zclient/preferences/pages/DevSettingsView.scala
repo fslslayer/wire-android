@@ -80,6 +80,10 @@ class DevSettingsViewImpl(context: Context, attrs: AttributeSet, style: Int) ext
     }
   }
 
+  val createFullConversationSwitch = returning(findById[SwitchPreference](R.id.preferences_dev_full_conv)) { v =>
+    v.setPreference(ShouldCreateFullConversation)
+  }
+
   private def registerClient(v: View, password: Option[Password] = None): Future[Unit] = {
     am.head.flatMap(_.registerNewClient()).map {
       case Right(Registered(id)) => showToast(s"Registered new client: $id")

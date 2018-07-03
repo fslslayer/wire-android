@@ -71,7 +71,7 @@ class ParticipantsAdapter(numOfColumns: Int)(implicit context: Context, injector
   lazy val users = for {
     z       <- zms
     userIds <- participantsController.otherParticipants.map(_.toSeq)
-    users   <- Signal.sequence(userIds.filterNot(_ == z.selfUserId).map(z.users.userSignal): _*)
+    users   <- Signal.sequence(userIds.filterNot(_ == z.selfUserId).map(z.usersStorage.signal): _*)
   } yield users.map(u => ParticipantData(u, u.isGuest(z.teamId) && !u.isWireBot)).sortBy(_.userData.getDisplayName)
 
   private val shouldShowGuestButton = inject[ConversationController].currentConv.map(_.accessRole.isDefined)

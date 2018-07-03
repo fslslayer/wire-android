@@ -49,7 +49,7 @@ abstract class UserVideoView(context: Context, val userId: UserId) extends Frame
 
   private val pictureId: Signal[ImageSource] = for {
     z             <- controller.callingZms
-    Some(picture) <- z.users.userSignal(userId).map(_.picture)
+    Some(picture) <- z.usersStorage.signal(userId).map(_.picture)
   } yield WireImage(picture)
 
   protected val imageView = returning(findById[ImageView](R.id.image_view)) { view =>

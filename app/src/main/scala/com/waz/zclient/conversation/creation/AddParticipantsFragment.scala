@@ -41,7 +41,6 @@ import com.waz.zclient.usersearch.views.{PickerSpannableEditText, SearchEditText
 import com.waz.zclient.utils.RichView
 
 import scala.collection.immutable.Set
-import scala.concurrent.Future
 
 class AddParticipantsFragment extends FragmentHelper {
 
@@ -73,7 +72,7 @@ class AddParticipantsFragment extends FragmentHelper {
   private lazy val searchBox = returning(view[SearchEditText](R.id.search_box)) { vh =>
     new FutureEventStream[(UserId, Boolean), (PickableUser, Boolean)](adapter.onUserSelectionChanged, {
       case (userId, selected) =>
-        zms.head.flatMap(_.users.getUser(userId).collect { case Some(u) => (PickableUser(userId, u.name), selected) })
+        zms.head.flatMap(_.usersStorage.get(userId).collect { case Some(u) => (PickableUser(userId, u.name), selected) })
     }).onUi {
       case (pu, selected) =>
         vh.foreach { v =>
@@ -129,8 +128,8 @@ class AddParticipantsFragment extends FragmentHelper {
     (for {
       zms <- zms.head
       selectedIds <- newConvController.users.head
-      selected <- Future.traverse(selectedIds)(zms.users.getUser)
-    } yield selected.flatten).map(_.foreach { user => searchBox.foreach(_.addElement(PickableUser(user.id, user.name))) })(Threading.Ui)
+      selected <- zms.usersStorage.listAll(selectedIds)
+    } yield selected).map(_.foreach { user => searchBox.foreach(_.addElement(PickableUser(user.id, user.name))) })(Threading.Ui)
 
     //lazy init
     errorText

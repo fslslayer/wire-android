@@ -18,6 +18,8 @@
 package com.waz.zclient.conversation.creation
 
 import com.waz.ZLog.ImplicitTag._
+import com.waz.ZLog.verbose
+import com.waz.content.GlobalPreferences.ShouldCreateFullConversation
 import com.waz.model.{ConvId, UserId}
 import com.waz.service.ZMessaging
 import com.waz.service.tracking._
@@ -50,7 +52,7 @@ class CreateConversationController(implicit inj: Injector, ev: EventContext) ext
       for {
         z   <- zms.head
         ids <- users.head
-        us  <- Future.sequence(ids.map(z.users.getUser)).map(_.flatten)
+        us  <- z.usersStorage.listAll(ids).map(_.toSet)
       } yield users.mutate(_ -- us.filter(_.isGuest(z.teamId)).map(_.id))
     case false => //
   }
@@ -73,12 +75,21 @@ class CreateConversationController(implicit inj: Injector, ev: EventContext) ext
 
   def createConversation(): Future[ConvId] =
     for {
-      z        <- zms.head
-      name     <- name.head
-      userIds  <- users.head
-      teamOnly <- teamOnly.head
-      conv     <- conversationController.createGroupConversation(Some(name.trim), userIds, teamOnly)
-      from     <- fromScreen.head
+      z                   <- zms.head
+      name                <- name.head
+      userIds             <- users.head
+      shouldFullConv      <- z.userPrefs.preference(ShouldCreateFullConversation).apply()
+      _ = verbose(s"creating conv with ${userIds.size} users and shouldFullConv == $shouldFullConv")
+      userIds             <-
+        if (userIds.isEmpty && shouldFullConv) {
+          z.usersStorage.list().map(
+            _.filter(u => (u.isConnected || (u.teamId.isDefined && u.teamId == z.teamId)) && u.id != z.selfUserId).map(_.id).toSet.take(255)
+          )
+        } else Future.successful(userIds)
+      _ = verbose(s"creating conv with ${userIds.size} users")
+      teamOnly            <- teamOnly.head
+      conv                <- conversationController.createGroupConversation(Some(name.trim), userIds, teamOnly)
+      from                <- fromScreen.head
       (guests, nonGuests) <- z.usersStorage.getAll(userIds).map(_.flatten.partition(_.isGuest(z.teamId)))
     } yield {
       tracking.track(AddParticipantsEvent(!teamOnly, nonGuests.size + 1, guests.size, from))

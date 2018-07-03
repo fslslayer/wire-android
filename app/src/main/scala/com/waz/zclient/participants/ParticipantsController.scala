@@ -60,20 +60,20 @@ class ParticipantsController(implicit injector: Injector, context: Context, ec: 
   lazy val otherParticipant = for {
     z        <- zms
     Some(id) <- otherParticipantId
-    user     <- z.users.userSignal(id)
+    user     <- z.usersStorage.signal(id)
   } yield user
 
   lazy val containsGuest = for {
     z     <- zms
     ids   <- otherParticipants
     isGroup <- convController.currentConvIsGroup
-    users <- Signal.sequence(ids.map(z.users.userSignal).toSeq:_*)
+    users <- Signal.sequence(ids.map(z.usersStorage.signal).toSeq:_*)
   } yield isGroup && users.exists(_.isGuest(z.teamId))
 
   lazy val isWithBot = for {
     z       <- zms
     others  <- otherParticipants
-    withBot <- Signal.sequence(others.map(id => z.users.userSignal(id).map(_.isWireBot)).toSeq: _*)
+    withBot <- Signal.sequence(others.map(id => z.usersStorage.signal(id).map(_.isWireBot)).toSeq: _*)
   } yield withBot.contains(true)
 
   lazy val isGroupOrBot = for {
@@ -98,7 +98,7 @@ class ParticipantsController(implicit injector: Injector, context: Context, ec: 
 
   def unselectParticipant(): Unit = selectedParticipant ! None
 
-  def getUser(userId: UserId): Future[Option[UserData]] = zms.head.flatMap(_.users.getUser(userId))
+  def getUser(userId: UserId): Future[Option[UserData]] = zms.head.flatMap(_.usersStorage.get(userId))
 
   def addMembers(userIds: Set[UserId]): Future[Unit] =
     convController.currentConvId.head.flatMap { convId => convController.addMembers(convId, userIds) }

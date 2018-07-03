@@ -122,7 +122,7 @@ class ConversationController(implicit injector: Injector, context: Context, ec: 
   def loadMembers(convId: ConvId): Future[Seq[UserData]] = for {
     z <- zms.head
     userIds <- z.membersStorage.activeMembers(convId).head // TODO: maybe switch to ConversationsMembersSignal
-    users <- z.users.getUsers(userIds.toSeq)
+    users <- z.usersStorage.listAll(userIds.toSeq)
   } yield users
 
   def loadClients(userId: UserId): Future[Seq[Client]] = zms.head.flatMap(_.otrClientsStorage.getClients(userId)) // TODO: move to SE maybe?

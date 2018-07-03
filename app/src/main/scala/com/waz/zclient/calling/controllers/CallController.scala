@@ -340,7 +340,7 @@ class CallController(implicit inj: Injector, cxt: WireContext, eventContext: Eve
       dur        <- duration
       group      <- isGroupCall
       callerId   <- callerId
-      callerName <- callingZms.flatMap(_.users.userSignal(callerId).map(_.getDisplayName).map(Option(_))).orElse(Signal.const(None))
+      callerName <- callingZms.flatMap(_.usersStorage.signal(callerId).map(_.getDisplayName).map(Option(_))).orElse(Signal.const(None))
     } yield (video, state, dur, callerName.filter(_ => group))).map {
       case (true,  SelfCalling,  _, _)  => cxt.getString(R.string.calling__header__outgoing_video_subtitle)
       case (false, SelfCalling,  _, _)  => cxt.getString(R.string.calling__header__outgoing_subtitle)

@@ -49,18 +49,18 @@ class UsersController(implicit injector: Injector, context: Context) extends Inj
     zms <- zMessaging
     msg <- message
     conv <- zms.convsStorage.signal(msg.convId)
-    user <- zms.users.userSignal(UserId(conv.id.str))
+    user <- user(UserId(conv.id.str))
   } yield if (isOneToOne(conv.convType)) Some(user) else None
 
   def displayNameStringIncludingSelf(id: UserId): Signal[String] =
     for {
       zms <- zMessaging
-      user <- zms.users.userSignal(id)
+      user <- user(id)
     } yield user.getDisplayName
 
   def displayName(id: UserId): Signal[DisplayName] = zMessaging.flatMap { zms =>
     if (zms.selfUserId == id) Signal const Me
-    else zms.users.userSignal(id).map(u => Other(u.getDisplayName))
+    else user(id).map(u => Other(u.getDisplayName))
   }
 
   lazy val availabilityVisible: Signal[Boolean] = for {
@@ -115,7 +115,7 @@ class UsersController(implicit injector: Injector, context: Context) extends Inj
 
   def userHandle(id: UserId): Signal[Option[Handle]] = user(id).map(_.handle)
 
-  def user(id: UserId): Signal[UserData] = zMessaging flatMap { _.users.userSignal(id) }
+  def user(id: UserId): Signal[UserData] = zMessaging flatMap { _.usersStorage.signal(id) }
 
   def selfUser: Signal[UserData] = selfUserId.flatMap(user)
 

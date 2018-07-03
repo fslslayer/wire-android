@@ -114,6 +114,16 @@
                 app:subtitle="@string/pref_dev_register_new_client_summary"
             />
 
+            <com.waz.zclient.preferences.views.SwitchPreference
+                android:id="@+id/preferences_dev_full_conv"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/wire__padding__20"
+                app:subtitle="@string/pref_dev_full_conv_summary"
+                app:title="@string/pref_dev_full_conv_title"
+                app:key="@string/pref_dev_full_conv_key"
+                />
+
         </LinearLayout>
 
     </ScrollView>

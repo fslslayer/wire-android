@@ -101,11 +101,13 @@ class CallingNotificationsController(implicit cxt: WireContext, eventContext: Ev
       case (cn1, cn2) => cn1.convId.str > cn2.convId.str
     }
 
+  private var currentNotifications = Set.empty[Int]
+
   notifications.map(_.exists(!_.isMainCall)).onUi(soundController.playRingFromThemInCall)
 
   notifications.onUi { nots =>
     verbose(s"${nots.size} call notifications")
-    val toCancel = notificationManager.getActiveNotifications.map(_.getId).toSet -- nots.map(_.id).toSet
+    val toCancel = currentNotifications -- nots.map(_.id).toSet
     toCancel.foreach(notificationManager.cancel(CallNotificationTag, _))
 
     nots.foreach { not =>
@@ -148,7 +150,10 @@ class CallingNotificationsController(implicit cxt: WireContext, eventContext: Ev
         case _ => //no available action
       }
 
-      def showNotification() = notificationManager.notify(CallNotificationTag, not.id, builder.build())
+      def showNotification() = {
+        currentNotifications += not.id
+        notificationManager.notify(CallNotificationTag, not.id, builder.build())
+      }
 
       LoggedTry(showNotification()).recover {
         case NonFatal(e) =>

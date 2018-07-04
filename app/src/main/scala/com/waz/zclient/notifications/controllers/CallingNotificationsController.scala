@@ -19,14 +19,17 @@ package com.waz.zclient.notifications.controllers
 
 import android.app.{NotificationManager, PendingIntent}
 import android.graphics.{Bitmap, Color}
+import android.os.Build
 import android.support.v4.app.NotificationCompat
 import com.waz.ZLog._
 import com.waz.bitmap.BitmapUtils
+import com.waz.content.UserPreferences
 import com.waz.model.{ConvId, UserId}
 import com.waz.service.assets.AssetService.BitmapResult.BitmapLoaded
 import com.waz.service.call.CallInfo
 import com.waz.service.call.CallInfo.CallState._
-import com.waz.service.{AccountsService, GlobalModule, ZMessaging}
+import com.waz.service.{AccountManager, AccountsService, GlobalModule, ZMessaging}
+import com.waz.threading.Threading.Implicits.Background
 import com.waz.ui.MemoryImageCache.BitmapRequest.Regular
 import com.waz.utils.LoggedTry
 import com.waz.utils.events.{EventContext, Signal}
@@ -41,6 +44,7 @@ import com.waz.zms.CallWakeService
 import org.threeten.bp.Instant
 import com.waz.utils._
 
+import scala.concurrent.Future
 import scala.util.control.NonFatal
 
 class CallingNotificationsController(implicit cxt: WireContext, eventContext: EventContext, inj: Injector) extends Injectable {
@@ -52,6 +56,7 @@ class CallingNotificationsController(implicit cxt: WireContext, eventContext: Ev
   val notificationManager = inject[NotificationManager]
 
   val callCtrler = inject[CallController]
+
   import callCtrler._
 
   val filteredGlobalProfile: Signal[(Option[ConvId], Seq[(ConvId, (UserId, UserId))])] = for {
@@ -101,68 +106,81 @@ class CallingNotificationsController(implicit cxt: WireContext, eventContext: Ev
       case (cn1, cn2) => cn1.convId.str > cn2.convId.str
     }
 
-  private var currentNotifications = Set.empty[Int]
+  private lazy val currentNotifications = inject[Signal[AccountManager]].map(_.userPrefs(UserPreferences.CurrentNotifications))
 
   notifications.map(_.exists(!_.isMainCall)).onUi(soundController.playRingFromThemInCall)
 
+  //we return a future here to help ensure the ordering of events, by foreach'ing the result of this method
+  private def cancelNots(nots: Seq[CallingNotificationsController.CallNotification]): Future[Unit] =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      Future.successful(notificationManager.getActiveNotifications.map(_.getId).toSet)
+    } else {
+      currentNotifications.head.flatMap(_.apply())
+    }.flatMap { curNots =>
+      val toCancel = curNots -- nots.map(_.id).toSet
+      Future.successful(toCancel.foreach(notificationManager.cancel(CallNotificationTag, _)))
+    }
+
   notifications.onUi { nots =>
     verbose(s"${nots.size} call notifications")
-    val toCancel = currentNotifications -- nots.map(_.id).toSet
-    toCancel.foreach(notificationManager.cancel(CallNotificationTag, _))
 
-    nots.foreach { not =>
-      val title = if (not.isGroup) not.convName else not.caller
-      val message = (not.isGroup, not.videoCall) match {
-        case (true, true)   => getString(R.string.system_notification__video_calling_group, not.caller)
-        case (true, false)  => getString(R.string.system_notification__calling_group, not.caller)
-        case (false, true)  => getString(R.string.system_notification__video_calling_one)
-        case (false, false) => getString(R.string.system_notification__calling_one)
-      }
+    cancelNots(nots).foreach { _ =>
+      nots.foreach { not =>
+        val title = if (not.isGroup) not.convName else not.caller
+        val message = (not.isGroup, not.videoCall) match {
+          case (true, true) => getString(R.string.system_notification__video_calling_group, not.caller)
+          case (true, false) => getString(R.string.system_notification__calling_group, not.caller)
+          case (false, true) => getString(R.string.system_notification__video_calling_one)
+          case (false, false) => getString(R.string.system_notification__calling_one)
+        }
 
-      val builder = DeprecationUtils.getBuilder(cxt)
-        .setSmallIcon(R.drawable.call_notification_icon)
-        .setLargeIcon(not.bitmap.orNull)
-        .setContentTitle(title)
-        .setContentText(message)
-        .setContentIntent(OpenCallingScreen())
-        .setStyle(new NotificationCompat.BigTextStyle()
-          .setBigContentTitle(title)
-          .bigText(message))
-        .setCategory(NotificationCompat.CATEGORY_CALL)
-        .setPriority(if (not.isMainCall) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_MAX) //incoming calls go higher up in the list)
-        .setOnlyAlertOnce(true)
-        .setOngoing(true)
+        val builder = DeprecationUtils.getBuilder(cxt)
+          .setSmallIcon(R.drawable.call_notification_icon)
+          .setLargeIcon(not.bitmap.orNull)
+          .setContentTitle(title)
+          .setContentText(message)
+          .setContentIntent(OpenCallingScreen())
+          .setStyle(new NotificationCompat.BigTextStyle()
+            .setBigContentTitle(title)
+            .bigText(message))
+          .setCategory(NotificationCompat.CATEGORY_CALL)
+          .setPriority(if (not.isMainCall) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_MAX) //incoming calls go higher up in the list)
+          .setOnlyAlertOnce(true)
+          .setOngoing(true)
 
-      if (!not.isMainCall) {
-        builder.setDefaults(NotificationCompat.DEFAULT_LIGHTS | NotificationCompat.DEFAULT_VIBRATE)
-        builder.setSound(RingtoneUtils.getUriForRawId(cxt, R.raw.empty_sound))
-      }
+        if (!not.isMainCall) {
+          builder.setDefaults(NotificationCompat.DEFAULT_LIGHTS | NotificationCompat.DEFAULT_VIBRATE)
+          builder.setSound(RingtoneUtils.getUriForRawId(cxt, R.raw.empty_sound))
+        }
 
-      not.action match {
-        case NotificationAction.DeclineOrJoin =>
-          builder
-            .addAction(R.drawable.ic_menu_silence_call_w, getString(R.string.system_notification__silence_call), createEndIntent(not.accountId, not.convId))
-            .addAction(R.drawable.ic_menu_join_call_w, getString(R.string.system_notification__join_call), if (not.isMainCall) createJoinIntent(not.accountId, not.convId) else CallIntent(not.accountId, not.convId))
+        not.action match {
+          case NotificationAction.DeclineOrJoin =>
+            builder
+              .addAction(R.drawable.ic_menu_silence_call_w, getString(R.string.system_notification__silence_call), createEndIntent(not.accountId, not.convId))
+              .addAction(R.drawable.ic_menu_join_call_w, getString(R.string.system_notification__join_call), if (not.isMainCall) createJoinIntent(not.accountId, not.convId) else CallIntent(not.accountId, not.convId))
 
-        case NotificationAction.Leave =>
-          builder.addAction(R.drawable.ic_menu_end_call_w, getString(R.string.system_notification__leave_call), createEndIntent(not.accountId, not.convId))
+          case NotificationAction.Leave =>
+            builder.addAction(R.drawable.ic_menu_end_call_w, getString(R.string.system_notification__leave_call), createEndIntent(not.accountId, not.convId))
 
-        case _ => //no available action
-      }
+          case _ => //no available action
+        }
 
-      def showNotification() = {
-        currentNotifications += not.id
-        notificationManager.notify(CallNotificationTag, not.id, builder.build())
-      }
-
-      LoggedTry(showNotification()).recover {
-        case NonFatal(e) =>
-          error(s"Notify failed: try without bitmap", e)
-          builder.setLargeIcon(null)
-          try showNotification()
-          catch {
-            case NonFatal(e2) => error("second display attempt failed, aborting", e2)
+        def showNotification() = {
+          currentNotifications.head.flatMap { curNotsPref =>
+            curNotsPref().flatMap(nots => curNotsPref := nots + not.id)
+            Future.successful(notificationManager.notify(CallNotificationTag, not.id, builder.build()))
           }
+        }
+
+        LoggedTry(showNotification()).recover {
+          case NonFatal(e) =>
+            error(s"Notify failed: try without bitmap", e)
+            builder.setLargeIcon(null)
+            try showNotification()
+            catch {
+              case NonFatal(e2) => error("second display attempt failed, aborting", e2)
+            }
+        }
       }
     }
   }
